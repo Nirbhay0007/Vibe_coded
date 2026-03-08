@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  # Spatial Database (Time Machine)
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: gods_eye_db
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: gods_eye
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgis_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+
+  # Telemetry & Math Engine
+  api:
+    build: .
+    container_name: gods_eye_api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://admin:password@db:5432/gods_eye
+    depends_on:
+      - db
+    volumes:
+      - .:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  postgis_data:
