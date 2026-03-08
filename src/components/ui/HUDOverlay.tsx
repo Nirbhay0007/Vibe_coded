@@ -1,7 +1,7 @@
 'use client';
 import { GlobalStatusPanel } from "./GlobalStatusPanel";
 import { EntityInspector } from "./EntityInspector";
-import { TimeMachineScrubber } from "./TimeMachineScrubber";
+import { TimeMachine } from "../hud/TimeMachine";
 import { SensorToolbar } from "./SensorToolbar";
 
 export function HUDOverlay() {
@@ -9,7 +9,7 @@ export function HUDOverlay() {
         <div className="absolute inset-0 z-40 pointer-events-none">
             <GlobalStatusPanel />
             <EntityInspector />
-            <TimeMachineScrubber />
+            <TimeMachine />
             <SensorToolbar />
         </div>
     );

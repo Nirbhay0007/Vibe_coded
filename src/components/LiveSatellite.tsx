@@ -42,7 +42,7 @@ export default function LiveSatellite({ tleLine1, tleLine2, name }: LiveSatellit
 
             return cartesianPosition;
         }, false); // false = not a constant value, changes over time
-    }, []);
+    }, [tleLine1, tleLine2, name]); // RE-RUN closure when TLE updates!
 
     return (
         <Entity

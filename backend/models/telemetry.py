@@ -18,6 +18,8 @@ class SensorTelemetry(Base):
     domain = Column(String(100), nullable=False)  # e.g., 'aviation', 'maritime'
     velocity = Column(Float, nullable=True)
     heading = Column(Float, nullable=True)
+    jitter = Column(Float, nullable=False, default=0.0)
+    nic = Column(Integer, nullable=False, default=10)
     
     # Store longitude, latitude and Unix timestamp together: ST_MakePointM(lon, lat, timestamp)
     geometry = Column(Geometry(geometry_type='POINTM', srid=4326), nullable=False)
