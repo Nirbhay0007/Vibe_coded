@@ -1,114 +1,135 @@
 'use client';
 
-import React, { useMemo, useState, useEffect } from 'react';
-import { PolygonGraphics, Entity } from 'resium';
+import React, { useEffect, useState } from 'react';
+import { Entity, PolygonGraphics } from 'resium';
 import * as Cesium from 'cesium';
-import * as h3 from 'h3-js';
-import { useTelemetryStore, TelemetryEntity } from '@/store/telemetryStore';
+import { cellToBoundary } from 'h3-js';
+import { useTelemetryStore } from '@/store/telemetryStore';
 
-// ── Configuration ──────────────────────────────────────────────────
-const H3_RESOLUTION = 6;
-const JAMMING_THRESHOLD_JITTER = 10.0; // Simulated threshold for jamming detection
-const JAMMING_THRESHOLD_NIC = 4;      // Metrics below this NIC are suspect
-const UPDATE_INTERVAL_MS = 2000;       // Aggregation loop frequency
-const PULSE_SPEED = 0.002;             // Alpha oscillation speed
-
-// ── Theme (THEME.md) ───────────────────────────────────────────────
-const COLOR_NEON_RED = Cesium.Color.fromCssColorString('#FF3131');
-const BASE_ALPHA = 0.3;
-
-interface JammingCell {
-    h3Index: string;
-    intensity: number; // 0.0 to 1.0 (normalized)
-    center: Cesium.Cartesian3;
-    boundary: Cesium.Cartesian3[];
+// The new data structure defined in the Phase 5 API Contract
+interface JammingCluster {
+    h3_index: string;
+    anomaly_score: number;
+    entity_count: number;
+    center_lat: number;
+    center_lon: number;
 }
 
+interface HeatmapResponse {
+    timestamp: number;
+    resolution: number;
+    clusters: JammingCluster[];
+}
+
+const COLOR_AMBER = Cesium.Color.fromCssColorString('#FFB300');
+const COLOR_FUCHSIA = Cesium.Color.fromCssColorString('#FF00FF');
+
 export default function JammingLayer() {
-    const entities = useTelemetryStore((s) => s.entities);
-    const [jammingCells, setJammingCells] = useState<JammingCell[]>([]);
-    const [pulseAlpha, setPulseAlpha] = useState(BASE_ALPHA);
+    const [clusters, setClusters] = useState<JammingCluster[]>([]);
+    const { showJammingLayer, jammingOpacity, jammingTimeWindow } = useTelemetryStore();
+    
+    // Flag to ensure the polling starts cleanly
+    const [isPolling, setIsPolling] = useState(false);
 
-    // ── Animation Loop: Pulsing Effect ─────────────────────────────
     useEffect(() => {
-        let frame: number;
-        const animate = (time: number) => {
-            const alpha = BASE_ALPHA + Math.sin(time * PULSE_SPEED) * 0.15;
-            setPulseAlpha(alpha);
-            frame = requestAnimationFrame(animate);
+        let isActive = true;
+
+        const fetchHeatmap = async () => {
+            try {
+                // Determine API URL based on environment or fallback to localhost
+                // @ts-ignore
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const res = await fetch(`${apiUrl}/api/jamming/heatmap?minutes_ago=${jammingTimeWindow}`);
+                
+                if (!res.ok) throw new Error('Failed to fetch jamming heatmap');
+                
+                const data: HeatmapResponse = await res.json();
+                
+                if (isActive) {
+                    setClusters(data.clusters || []);
+                }
+            } catch (err) {
+                console.warn('[JammingLayer] Fetch error:', err);
+            }
         };
-        frame = requestAnimationFrame(animate);
-        return () => cancelAnimationFrame(frame);
-    }, []);
 
-    // ── Aggregation Loop: H3 Jamming Detection ────────────────────
-    useEffect(() => {
-        const interval = setInterval(() => {
-            const cells = new Map<string, { count: number; totalJitter: number; lowNicCount: number }>();
+        if (!isPolling) {
+            fetchHeatmap();
+            setIsPolling(true);
+        }
 
-            // 1. Group entities into H3 hexagons and sum metrics
-            Object.values(entities).forEach((entity) => {
-                const h3Index = h3.latLngToCell(entity.latitude, entity.longitude, H3_RESOLUTION);
-                const stats = cells.get(h3Index) || { count: 0, totalJitter: 0, lowNicCount: 0 };
+        const intervalId = setInterval(fetchHeatmap, 5000);
 
-                stats.count++;
-                stats.totalJitter += entity.jitter || 0;
-                if ((entity.nic ?? 10) < JAMMING_THRESHOLD_NIC) {
-                    stats.lowNicCount++;
-                }
+        return () => {
+            isActive = false;
+            clearInterval(intervalId);
+        };
+    }, [isPolling, jammingTimeWindow]);
 
-                cells.set(h3Index, stats);
-            });
-
-            // 2. Identify "Jamming" cells based on heuristic
-            const detected: JammingCell[] = [];
-            cells.forEach((stats, h3Index) => {
-                const avgJitter = stats.totalJitter / stats.count;
-                const isSuspect = avgJitter > JAMMING_THRESHOLD_JITTER || stats.lowNicCount > 0;
-
-                if (isSuspect) {
-                    const boundaryCoords = h3.cellToBoundary(h3Index);
-                    const boundary = boundaryCoords.map(
-                        (coord) => Cesium.Cartesian3.fromDegrees(coord[1], coord[0])
-                    );
-                    const centerCoord = h3.cellToLatLng(h3Index);
-                    const center = Cesium.Cartesian3.fromDegrees(centerCoord[1], centerCoord[0]);
-
-                    detected.push({
-                        h3Index,
-                        intensity: Math.min(stats.count / 5, 1.0), // Intensity scales with entity density
-                        center,
-                        boundary
-                    });
-                }
-            });
-
-            setJammingCells(detected);
-        }, UPDATE_INTERVAL_MS);
-
-        return () => clearInterval(interval);
-    }, [entities]);
+    if (!showJammingLayer) return null;
 
     return (
         <>
-            {jammingCells.map((cell) => (
-                <Entity
-                    key={cell.h3Index}
-                    name={`EW JAMMING ZONE | ${cell.h3Index}`}
-                    position={cell.center}
-                >
-                    <PolygonGraphics
-                        hierarchy={new Cesium.PolygonHierarchy(cell.boundary)}
-                        material={new Cesium.ColorMaterialProperty(
-                            COLOR_NEON_RED.withAlpha(pulseAlpha * cell.intensity)
-                        )}
-                        outline={true}
-                        outlineColor={COLOR_NEON_RED}
-                        outlineWidth={1}
-                        height={50} // Slightly above ground
-                    />
-                </Entity>
-            ))}
+            {clusters.map((cluster: JammingCluster) => {
+                let boundary;
+                try {
+                    // Uses h3-js to convert H3 hex index to lat/lon vertices
+                    boundary = cellToBoundary(cluster.h3_index);
+                } catch (e) {
+                    return null; // Handle potentially invalid h3 indexes defensively
+                }
+
+                // Convert h3 boundary [lat, lon][] to Cesium degree array [lon, lat, lon, lat]
+                const degreesArray: number[] = [];
+                for (const [lat, lon] of boundary) {
+                    degreesArray.push(lon, lat);
+                }
+
+                let hierarchy;
+                try {
+                    hierarchy = new Cesium.PolygonHierarchy(
+                        Cesium.Cartesian3.fromDegreesArray(degreesArray)
+                    );
+                } catch (e) {
+                    return null;
+                }
+
+                // Map anomaly_score (0.0 to 1.0) to Amber -> Fuchsia transition
+                const lerpedColor = Cesium.Color.lerp(
+                    COLOR_AMBER,
+                    COLOR_FUCHSIA,
+                    cluster.anomaly_score,
+                    new Cesium.Color()
+                );
+                
+                // Adjust transparency based on severity and global settings
+                const fillAlpha = (0.3 + (cluster.anomaly_score * 0.3)) * jammingOpacity; 
+                const fillColor = lerpedColor.withAlpha(fillAlpha);
+                const outlineColor = lerpedColor.withAlpha(0.8 * jammingOpacity);
+
+                return (
+                    <Entity
+                        key={cluster.h3_index}
+                        name={`Jamming Cluster [${cluster.h3_index}]`}
+                        description={`
+                            <h3>Jamming Source Estimated</h3>
+                            <p><b>Severity:</b> ${(cluster.anomaly_score * 100).toFixed(0)}%</p>
+                            <p><b>Entities Affected:</b> ${cluster.entity_count}</p>
+                            <p><b>Center:</b> ${cluster.center_lat.toFixed(4)}, ${cluster.center_lon.toFixed(4)}</p>
+                        `}
+                    >
+                        <PolygonGraphics
+                            hierarchy={hierarchy}
+                            material={fillColor}
+                            outline={true}
+                            outlineColor={outlineColor}
+                            outlineWidth={3}
+                            // Ground clamping enforces the UX constraint that hexagons don't obscure models
+                            zIndex={1} 
+                        />
+                    </Entity>
+                );
+            })}
         </>
     );
 }

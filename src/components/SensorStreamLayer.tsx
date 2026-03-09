@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useCallback } from 'react';
-import { Entity, PointGraphics } from 'resium';
+import { Entity, PointGraphics, CylinderGraphics, useCesium } from 'resium';
 import * as Cesium from 'cesium';
 import { useTelemetryStore, TelemetryEntity } from '@/store/telemetryStore';
 
@@ -9,6 +9,7 @@ import { useTelemetryStore, TelemetryEntity } from '@/store/telemetryStore';
 const COLOR_CYAN = Cesium.Color.fromCssColorString('#00E5FF');
 const COLOR_TEAL = Cesium.Color.fromCssColorString('#008080');
 const COLOR_FUCHSIA = Cesium.Color.fromCssColorString('#FF00FF');
+const COLOR_PULSE_RED = Cesium.Color.fromCssColorString('#FF3131');
 const OUTLINE_ALPHA = 0.3;
 
 const WS_URL = 'ws://localhost:8000/ws/telemetry';
@@ -16,6 +17,8 @@ const WS_URL = 'ws://localhost:8000/ws/telemetry';
 export default function SensorStreamLayer() {
     const cartesianCache = useRef<Map<string, Cesium.Cartesian3>>(new Map());
     const wsRef = useRef<WebSocket | null>(null);
+    const flownOsintIds = useRef<Set<string>>(new Set());
+    const { viewer } = useCesium();
 
     const updateEntities = useTelemetryStore((s) => s.updateEntities);
     const isLive = useTelemetryStore((s) => s.isLive);
@@ -53,6 +56,26 @@ export default function SensorStreamLayer() {
                             entity.altitude
                         )
                     );
+
+                    // Phase 4: The "God's Eye" Camera Move for osint_alert
+                    if (entity.domain === 'osint_alert' && !flownOsintIds.current.has(entity.entity_id)) {
+                        flownOsintIds.current.add(entity.entity_id);
+                        if (viewer && viewer.camera) {
+                            viewer.camera.flyTo({
+                                destination: Cesium.Cartesian3.fromDegrees(
+                                    entity.longitude,
+                                    entity.latitude,
+                                    50000
+                                ),
+                                orientation: {
+                                    heading: 0.0,
+                                    pitch: Cesium.Math.toRadians(-60.0), // high-angle tactical pitch
+                                    roll: 0.0
+                                },
+                                duration: 2.0
+                            });
+                        }
+                    }
                 }
 
                 for (const id of cache.keys()) {
@@ -74,7 +97,7 @@ export default function SensorStreamLayer() {
         ws.onerror = () => ws.close();
 
         wsRef.current = ws;
-    }, [updateEntities]);
+    }, [updateEntities, viewer]);
 
     const disconnectWs = useCallback(() => {
         if (wsRef.current) {
@@ -155,10 +178,14 @@ export default function SensorStreamLayer() {
 
                 const isAviation = meta.domain === 'aviation';
                 const isDarkShip = meta.domain === 'maritime' && meta.dark_ship === true;
+                const isOsint = meta.domain === 'osint_alert';
 
                 let pointColor: Cesium.Color;
                 let outlineColor: Cesium.Color;
-                if (isDarkShip) {
+                if (isOsint) {
+                    pointColor = COLOR_PULSE_RED;
+                    outlineColor = COLOR_PULSE_RED.withAlpha(OUTLINE_ALPHA);
+                } else if (isDarkShip) {
                     pointColor = COLOR_FUCHSIA;
                     outlineColor = COLOR_FUCHSIA.withAlpha(OUTLINE_ALPHA);
                 } else if (isAviation) {
@@ -177,11 +204,19 @@ export default function SensorStreamLayer() {
                         position={getOrCreateProperty(id)}
                     >
                         <PointGraphics
-                            pixelSize={isAviation ? 6 : 8}
+                            pixelSize={isOsint ? 12 : isAviation ? 6 : 8}
                             color={pointColor}
                             outlineColor={outlineColor}
-                            outlineWidth={3}
+                            outlineWidth={isOsint ? 4 : 3}
                         />
+                        {isOsint && (
+                            <CylinderGraphics
+                                length={100000} // Drops from 50,000m down (and goes 50,000m down into earth, which is fine)
+                                topRadius={50}
+                                bottomRadius={10}
+                                material={COLOR_PULSE_RED.withAlpha(0.6)}
+                            />
+                        )}
                     </Entity>
                 );
             })}

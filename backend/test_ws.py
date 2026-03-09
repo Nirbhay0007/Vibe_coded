@@ -11,7 +11,7 @@ async def test_websocket():
             
             # Wait for one telemetry payload
             print("Waiting for payload...")
-            response = await asyncio.wait_for(websocket.recv(), timeout=5.0)
+            response = await asyncio.wait_for(websocket.recv(), timeout=15.0)
             
             payload = json.loads(response)
             

@@ -1,0 +1,59 @@
+services:
+  # 1. Spatial Database (Time Machine)
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: gods_eye_db
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: gods_eye
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgis_data:/var/lib/postgresql/data
+      - ./backend/db/init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d gods_eye"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. Telemetry & Math Engine (FastAPI)
+  api:
+    build: 
+      context: ./backend
+    container_name: gods_eye_api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://admin:password@db:5432/gods_eye
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # 3. Mission Control UI (Next.js)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gods_eye_ui
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - api
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    # Use dev mode in compose for local iteration
+    command: npm run dev
+
+volumes:
+  postgis_data:

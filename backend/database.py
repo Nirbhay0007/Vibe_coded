@@ -1,5 +1,6 @@
 import os
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
 
 # Fetch connection string from environment, fallback to defined Docker Compose string
@@ -18,7 +19,7 @@ engine = create_async_engine(
 )
 
 # Async Session Factory based on the engine
-AsyncSessionLocal = async_sessionmaker(
+AsyncSessionLocal = sessionmaker(
     engine, expire_on_commit=False, class_=AsyncSession
 )
 

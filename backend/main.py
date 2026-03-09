@@ -10,6 +10,8 @@ from ws_manager import manager
 from database import AsyncSessionLocal
 from models.telemetry import SensorTelemetry
 from routes.history import router as history_router
+from routes.osint import router as osint_router
+from routes.jamming import router as jamming_router
 from services.opensky_ingestion import opensky_service
 from services.ais_ingestion import ais_service
 
@@ -41,6 +43,15 @@ app.add_middleware(
 
 # Mount the Time Machine history API (Lead Architect — Phase 2, Step 4)
 app.include_router(history_router)
+
+# Mount the Agent 5 Intelligence Scraper API
+app.include_router(osint_router, prefix="/api/osint", tags=["OSINT"])
+
+# Mount the Phase 5 GPS Jamming Hexagon API
+app.include_router(jamming_router)
+
+# Mount the Agent 3 GPS Jamming Analytics API
+app.include_router(jamming_router, prefix="/api/jamming", tags=["Jamming Analytics"])
 
 async def broadcast_loop():
     """
