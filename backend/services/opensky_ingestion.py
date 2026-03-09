@@ -6,12 +6,12 @@ from models.schemas import TelemetryPayload
 class OpenSkyService:
     def __init__(self):
         self.url = "https://opensky-network.org/api/states/all"
-        # US Bounding Box: lamin=25.0, lomin=-130.0, lamax=50.0, lomax=-60.0
+        # Small US Bounding Box (NYC Area) to limit data payload and rate limits for anonymous
         self.params = {
-            "lamin": 25.0,
-            "lomin": -130.0,
-            "lamax": 50.0,
-            "lomax": -60.0
+            "lamin": 40.0,
+            "lomin": -75.0,
+            "lamax": 42.0,
+            "lomax": -71.0
         }
         self.client = httpx.AsyncClient(timeout=10.0)
 
@@ -28,6 +28,13 @@ class OpenSkyService:
         """
         try:
             response = await self.client.get(self.url, params=self.params)
+            
+            if response.status_code == 429:
+                retry_after = response.headers.get("Retry-After", 30)
+                print(f"CRITICAL: OpenSky Rate Limit Hit. Cooling down for {retry_after}s")
+                await asyncio.sleep(int(retry_after))
+                return []
+                
             response.raise_for_status()
             data = response.json()
             
@@ -69,6 +76,15 @@ class OpenSkyService:
                 ))
             return payloads
             
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:
+                print("CRITICAL: OpenSky Rate Limit Hit")
+            else:
+                print(f"Error fetching from OpenSky (HTTP {e.response.status_code}): {e}")
+            return []
+        except httpx.TimeoutException:
+            print("CRITICAL: OpenSky Rate Limit Hit (Timeout)")
+            return []
         except Exception as e:
             print(f"Error fetching from OpenSky: {e}")
             return []

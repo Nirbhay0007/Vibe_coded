@@ -12,7 +12,7 @@ DATABASE_URL = os.getenv(
 # Initialize the async SQLAlchemy Engine for high-throughput Postgres ingestion
 engine = create_async_engine(
     DATABASE_URL,
-    echo=True, # Set to True for debugging SQL queries initially
+    echo=False, # Set to False to stop console flooding
     future=True,
     pool_size=20, # Expand pool to allow heavy ingress of ADS-B data
     max_overflow=10

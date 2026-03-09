@@ -31,9 +31,14 @@ function ScenePickHandler() {
             (click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
                 const picked = viewer.scene.pick(click.position);
 
-                if (Cesium.defined(picked) && picked.id && picked.id.id) {
-                    // picked.id is the Cesium.Entity; its .id is the string we set
-                    selectEntity(picked.id.id as string);
+                if (Cesium.defined(picked) && picked.id) {
+                    // Extract ID safely. Resium Entities store their id in picked.id.id
+                    const entityId = typeof picked.id === 'string' ? picked.id : picked.id.id;
+                    if (entityId) {
+                        selectEntity(entityId as string);
+                    } else {
+                        selectEntity(null);
+                    }
                 } else {
                     // Clicked empty space → deselect
                     selectEntity(null);
@@ -50,6 +55,25 @@ function ScenePickHandler() {
     }, [viewer, selectEntity]);
 
     return null; // Renders nothing; purely an event‑binding side‑effect
+}
+
+/**
+ * Inner component to handle initial regional pivot.
+ */
+function CameraInitializer() {
+    const { viewer } = useCesium();
+
+    useEffect(() => {
+        if (!viewer) return;
+
+        // Regional Pivot: Focus on Strait of Hormuz
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(56.3, 26.2, 800000.0),
+            duration: 2.0
+        });
+    }, [viewer]);
+
+    return null;
 }
 
 export default function CesiumViewer() {
@@ -91,9 +115,13 @@ export default function CesiumViewer() {
             fullscreenButton={false}
             globe={globe}
             skyAtmosphere={skyAtmosphere}
+            shouldAnimate={true}
         >
             {/* scene.pick click handler */}
             <ScenePickHandler />
+
+            {/* Regional Pivot Initializer */}
+            <CameraInitializer />
 
             {/* Live Orbital Tracker */}
             {satelliteData && (

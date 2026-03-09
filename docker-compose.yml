@@ -37,23 +37,23 @@ services:
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
   # 3. Mission Control UI (Next.js)
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: gods_eye_ui
-    ports:
-      - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-    depends_on:
-      - api
-    volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/.next
-    # Use dev mode in compose for local iteration
-    command: npm run dev
+#  frontend:
+#    build:
+#      context: .
+#      dockerfile: Dockerfile
+#    container_name: gods_eye_ui
+#    ports:
+#      - "3000:3000"
+#    environment:
+#      - NEXT_PUBLIC_API_URL=http://localhost:8000
+#    depends_on:
+#      - api
+#    volumes:
+#      - .:/app
+#      - /app/node_modules
+#      - /app/.next
+#    # Use dev mode in compose for local iteration
+#    command: npm run dev
 
 volumes:
   postgis_data:

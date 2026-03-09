@@ -1,12 +1,12 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Literal
 
 class TelemetryPayload(BaseModel):
     """
     Standardized payload for all domain telemetry (aviation, maritime, etc.)
     """
-    entity_id: str = Field(..., description="Unique identifier for the entity (e.g. ICAO24 hex)")
-    domain: str = Field(..., description="Sensor domain: 'aviation' or 'maritime'")
+    entity_id: str = Field(..., description="Unique identifier for the entity (e.g. ICAO24 hex or MMSI)")
+    domain: Literal['aviation', 'maritime', 'space', 'osint_alert'] = Field(..., description="Sensor domain")
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
     altitude: Optional[float] = Field(None, description="Altitude in meters")
@@ -14,6 +14,8 @@ class TelemetryPayload(BaseModel):
     heading: Optional[float] = Field(None, description="True track in degrees (0-360)")
     jitter: Optional[float] = Field(0.0, description="Position jitter for jamming detection")
     nic: Optional[int] = Field(10, description="Navigation Integrity Category")
+    name: Optional[str] = Field(None, description="Human-readable name (e.g. satellite designation)")
+    country: Optional[str] = Field(None, description="Country of origin / operator")
 
 class AnomalyPayload(BaseModel):
     """

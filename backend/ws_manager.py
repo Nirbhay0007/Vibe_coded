@@ -13,7 +13,13 @@ class ConnectionManager:
         self.active_connections.remove(websocket)
 
     async def broadcast(self, message: dict):
-        for connection in self.active_connections:
+        payload_len = len(message.get('data', []) if isinstance(message, dict) and 'data' in message else message)
+        
+        if payload_len == 0:
+            print("WARNING: Broadcasting empty payload (0 entities)")
+        
+        for connection in list(self.active_connections):
+            print(f"Broadcasting {payload_len} entities to {len(self.active_connections)} clients")
             try:
                 await connection.send_json(message)
             except Exception:

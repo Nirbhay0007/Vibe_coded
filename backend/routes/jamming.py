@@ -30,11 +30,18 @@ def get_h3_center(h3_index: str):
         # h3 < 4.0
         return h3.h3_to_geo(h3_index)
 
+import logging
+
+# Configure logger
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 @router.get("/heatmap", response_model=HeatmapResponse)
 async def get_heatmap(
     minutes_ago: int = Query(5, description="Time window for analyzing anomalies"),
     db: AsyncSession = Depends(get_db),
 ):
+    logger.info("Heatmap endpoint hit by frontend")
     current_time = time.time()
     start_time = current_time - (minutes_ago * 60)
     

@@ -6,7 +6,7 @@ import { create } from 'zustand';
  */
 export interface TelemetryEntity {
     entity_id: string;
-    domain: 'aviation' | 'maritime' | 'osint_alert';
+    domain: 'aviation' | 'maritime' | 'osint_alert' | 'space';
     latitude: number;
     longitude: number;
     altitude: number;
@@ -15,6 +15,8 @@ export interface TelemetryEntity {
     dark_ship?: boolean;
     jitter?: number; // Phase 3c: Velocity jitter for jamming heuristic
     nic?: number;    // Phase 3c: Navigation Integrity Category
+    name?: string;   // Satellite designation / human name
+    country?: string; // Country of origin / operator
 }
 
 interface TelemetryState {
@@ -52,12 +54,13 @@ export const useTelemetryStore = create<TelemetryState>((set: any) => ({
     jammingTimeWindow: 60, // Default to 1 hour window
 
     updateEntities: (incoming: TelemetryEntity[]) =>
-        set(() => {
-            const next: Record<string, TelemetryEntity> = {};
-            for (const entity of incoming) {
-                next[entity.entity_id] = entity;
-            }
-            return { entities: next };
+        set((state: TelemetryState) => {
+            const newEntities = incoming.reduce((acc, curr) => {
+                acc[curr.entity_id] = curr;
+                return acc;
+            }, {} as Record<string, TelemetryEntity>);
+
+            return { entities: { ...state.entities, ...newEntities } };
         }),
 
     selectEntity: (id: string | null) => set({ selectedEntityId: id }),

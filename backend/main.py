@@ -12,8 +12,24 @@ from models.telemetry import SensorTelemetry
 from routes.history import router as history_router
 from routes.osint import router as osint_router
 from routes.jamming import router as jamming_router
-from services.opensky_ingestion import opensky_service
-from services.ais_ingestion import ais_service
+from services.mock_aviation import mock_aviation_service
+from services.maritime_ingestion import maritime_service
+from services.satellite_ingestion import satellite_service
+
+def truncate_payload(d: dict) -> dict:
+    """Level 1 Payload Optimization: truncate floats to reduce WebSocket bandwidth.
+    Lat/Lon -> 5 decimal places (~1.1m precision, sufficient for visualization).
+    Altitude/Velocity -> 1 decimal place.
+    """
+    if 'latitude' in d and d['latitude'] is not None:
+        d['latitude'] = round(d['latitude'], 5)
+    if 'longitude' in d and d['longitude'] is not None:
+        d['longitude'] = round(d['longitude'], 5)
+    if 'altitude' in d and d['altitude'] is not None:
+        d['altitude'] = round(d['altitude'], 1)
+    if 'velocity' in d and d['velocity'] is not None:
+        d['velocity'] = round(d['velocity'], 1)
+    return d
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -22,7 +38,7 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown: cancel task and close services
     task.cancel()
-    await opensky_service.close()
+    await mock_aviation_service.close()
 
 # Initialize FastAPI for Phase 2: The Persistent Operational Picture
 app = FastAPI(
@@ -35,8 +51,8 @@ app = FastAPI(
 # CORS configuration to allow local Next.js frontend to connect
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -47,11 +63,8 @@ app.include_router(history_router)
 # Mount the Agent 5 Intelligence Scraper API
 app.include_router(osint_router, prefix="/api/osint", tags=["OSINT"])
 
-# Mount the Phase 5 GPS Jamming Hexagon API
+# Mount the Phase 4/5 GPS Jamming Analytics API (One inclusion only)
 app.include_router(jamming_router)
-
-# Mount the Agent 3 GPS Jamming Analytics API
-app.include_router(jamming_router, prefix="/api/jamming", tags=["Jamming Analytics"])
 
 async def broadcast_loop():
     """
@@ -66,45 +79,46 @@ async def broadcast_loop():
             start_time = time.time()
             now = start_time
             
-            # 1a. Fetch Live Aviation (10s interval to respect rate limits)
-            if now - last_opensky_fetch >= 10.0:
-                try:
-                    aviation_cache = await opensky_service.fetch_live_states()
-                    last_opensky_fetch = now
-                    print(f"📡 [DATA LOGISTICS] Fetched {len(aviation_cache)} live flights from OpenSky.")
-                except Exception as e:
-                    print(f"⚠️ [DATA LOGISTICS] OpenSky Fetch Error: {e}")
+            # 1a. Fetch Mock Aviation (1Hz)
+            try:
+                aviation_cache = await mock_aviation_service.fetch_live_states(dt=1.0)
+                print(f"📡 [DATA LOGISTICS] Fetched {len(aviation_cache)} simulated flights.")
+            except Exception as e:
+                print(f"⚠️ [DATA LOGISTICS] Mock Aviation Fetch Error: {e}")
             
-            # 1b. Fetch Live Maritime (AIS Simulation — 1Hz)
-            maritime_updates = [p.model_dump() for p in ais_service.get_vessel_states(dt=1.0)]
             
-            # 1c. Combine datasets
-            # Convert aviation Pydantic models to dicts
-            updates = maritime_updates + [p.model_dump() for p in aviation_cache]
+
+            # 1c. Fetch Orbiting Satellites (SGP4 propagation — 1Hz)
+            try:
+                space_cache = await satellite_service.get_satellite_states(now)
+                print(f"📡 [DATA LOGISTICS] Propagated {len(space_cache)} Strategic Assets.")
+                # Ensure we skip extensive logging at 1Hz so we don't spam terminal
+            except Exception as e:
+                space_cache = []
+                print(f"⚠️ [DATA LOGISTICS] SGP4 Math Error: {e}")
+
+            # 1d. Fetch Live Maritime (Simulator — 1Hz)
+            try:
+                maritime_cache = maritime_service.step(dt=1.0)
+                print(f"📡 [DATA LOGISTICS] Simulated {len(maritime_cache)} naval vessels.")
+                maritime_updates = [truncate_payload(p.model_dump(exclude_none=True)) for p in maritime_cache]
+            except Exception as e:
+                print(f"⚠️ [DATA LOGISTICS] Maritime Simulator Error: {e}")
+                maritime_updates = []
+            
+            # 1e. Combine datasets (strip null fields for payload compression)
+            space_updates = [truncate_payload(p.model_dump(exclude_none=True)) for p in space_cache]
+            aviation_updates = [truncate_payload(p.model_dump(exclude_none=True)) for p in aviation_cache]
+            updates = [truncate_payload(p) for p in maritime_updates] + space_updates + aviation_updates
             current_timestamp = now
             
             # 2. Write to PostGIS database
             try:
+                from db.crud import insert_telemetry_batch
                 async with AsyncSessionLocal() as session:
-                    for data in updates:
-                        # Construct telemetry points
-                        # Use func.ST_SetSRID(func.ST_MakePointM(lon, lat, timestamp), 4326)
-                        point = func.ST_SetSRID(func.ST_MakePointM(data['longitude'], data['latitude'], current_timestamp), 4326)
-                        telemetry_row = SensorTelemetry(
-                            entity_id=data['entity_id'],
-                            domain=data['domain'],
-                            velocity=data.get('velocity'),
-                            heading=data.get('heading'),
-                            jitter=data.get('jitter', 0.0),
-                            nic=data.get('nic', 10),
-                            geometry=point
-                        )
-                        session.add(telemetry_row)
-                    
-                    # Commit the batch
-                    await session.commit()
-            except SQLAlchemyError as e:
-                # print(f"Database error during telemetry insert: {e}")
+                    await insert_telemetry_batch(session, updates, current_timestamp)
+            except Exception as e:
+                # High-level capture; production should use a structured logger
                 pass
                 
             # 3. Broadcast to all clients
@@ -144,4 +158,8 @@ async def websocket_telemetry(websocket: WebSocket):
             _ = await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
