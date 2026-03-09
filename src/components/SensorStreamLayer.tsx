@@ -183,7 +183,8 @@ export default function SensorStreamLayer() {
 
                     // ── Update SampledPositionProperty ──
                     // Convert backend Unix timestamp to JulianDate
-                    const time = Cesium.JulianDate.fromDate(new Date(Number(payload.timestamp) * 1000));
+                    const timestampMs = payload.timestamp ? Number(payload.timestamp) * 1000 : Date.now();
+                    const time = Cesium.JulianDate.fromDate(new Date(timestampMs));
                     const pos = Cesium.Cartesian3.fromDegrees(
                         entity.longitude,
                         entity.latitude,
@@ -383,7 +384,7 @@ export default function SensorStreamLayer() {
                         {isAviation ? (
                             <BillboardGraphics
                                 image={AVIATION_SVG_URI}
-                                scale={0.25}
+                                scale={0.75}
                                 rotation={getOrCreateRotation(id)}
                             />
                         ) : isMaritime ? (
@@ -397,7 +398,7 @@ export default function SensorStreamLayer() {
                                                 ? TANKER_SVG_URI
                                                 : BOAT_SVG_URI
                                 }
-                                scale={meta.name === 'Tanker' ? 0.2 : meta.name === 'Warship' ? 0.18 : 0.15}
+                                scale={meta.name === 'Tanker' ? 0.6 : meta.name === 'Warship' ? 0.54 : 0.45}
                                 rotation={getOrCreateRotation(id)}
                                 heightReference={Cesium.HeightReference.CLAMP_TO_GROUND}
                                 eyeOffset={new Cesium.Cartesian3(0, 0, -500)}
@@ -433,10 +434,10 @@ export default function SensorStreamLayer() {
                                     semiMinorAxis={80000}
                                     height={0} // Force to ground
                                     heightReference={Cesium.HeightReference.CLAMP_TO_GROUND}
-                                    material={COLOR_RADIOACTIVE_GREEN.withAlpha(0.08)}
+                                    material={COLOR_RADIOACTIVE_GREEN.withAlpha(0.2)}
                                     outline
-                                    outlineColor={COLOR_RADIOACTIVE_GREEN.withAlpha(0.4)}
-                                    outlineWidth={2}
+                                    outlineColor={COLOR_RADIOACTIVE_GREEN.withAlpha(0.8)}
+                                    outlineWidth={3}
                                 />
                                 {/* Tactical Vertical Tether Drop-Line (Satellite to Ground) */}
                                 <Entity

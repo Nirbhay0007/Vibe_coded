@@ -1,0 +1,30 @@
+# Satellite Visibility & Intelligence Focus
+
+Fix satellite invisibility by implementing a hardcoded TLE fallback (CelesTrak bypass) and narrow the focus to 4 high-value strategic assets (HVA).
+
+## Proposed Changes
+
+### Backend: Satellite Service
+#### [MODIFY] [satellite_ingestion.py](file:///c:/Users/ADMIN/Downloads/Vibe_coded/backend/services/satellite_ingestion.py)
+- **Hardcoded Fallback**: Add a list of "High-Value Assets" (USA, Russia, China, Iran) with hardcoded TLE strings to use if CelesTrak fails.
+- **Important 4 Filter**:
+  - Filter the global list to only include a curated set of 4-6 important satellites.
+  - Return exactly the top 4 that are currently visible/relevant to the theater.
+- **Theater Bounding Box**: Tighten `GULF_` constants to match the Strait of Hormuz focus (Lat 22–30, Lon 50–60).
+- **Country Mapping**: Ensure the HVAs have explicit country names.
+
+### Frontend: Rendering
+#### [MODIFY] [SensorStreamLayer.tsx](file:///c:/Users/ADMIN/Downloads/Vibe_coded/src/components/SensorStreamLayer.tsx)
+- **Timestamp Fix**: Verify `payload.timestamp` logic is robust.
+- **Footprint Visibility**: Increase footprint alpha or outline to ensure it's visible in the new theater zoom level.
+
+## Verification Plan
+
+### Automated Tests
+- `docker restart api`
+- Check `docker logs gods_eye_api` for "📡 [SPACE] Using Hardcoded Fallback TLEs" message.
+- Verify only 3-4 satellites are emitted in the log.
+
+### Manual Verification
+- Confirm green satellite icons and footprints appear over the Strait of Hormuz.
+- Click an entity to verify name and country (e.g., `NOOR-3 [Iran]`).

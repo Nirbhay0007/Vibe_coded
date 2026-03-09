@@ -75,29 +75,7 @@ class SatelliteService:
         if now - self.last_fetch_time < self.cache_duration and self.sats:
             return
 
-        print("📡 [SPACE] Attempting CelesTrak fetch...")
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(self.celestrak_url)
-                response.raise_for_status()
-                tle_data = response.text.strip().splitlines()
-                
-                parsed = []
-                for i in range(0, len(tle_data), 3):
-                    if i + 2 < len(tle_data):
-                        try:
-                            name = tle_data[i].strip()
-                            sat = Satrec.twoline2rv(tle_data[i+1].strip(), tle_data[i+2].strip())
-                            parsed.append({"sat": sat, "name": name, "country": _infer_country(name)})
-                        except Exception: continue
-                
-                if parsed:
-                    self.sats = parsed
-                    self.last_fetch_time = now
-                    print(f"📡 [SPACE] Parsed {len(self.sats)} satellites from CelesTrak.")
-                    return
-        except Exception as e:
-            print(f"⚠️ [SPACE] CelesTrak failed ({e}). Using STRATEGIC ASSET FALLBACK.")
+        print("📡 [SPACE] Using Hardcoded Fallback TLEs")
 
         # Fallback to Strategic Assets
         fallback_sats = []
@@ -108,7 +86,6 @@ class SatelliteService:
             except Exception: continue
         self.sats = fallback_sats
         self.last_fetch_time = now
-        print(f"📡 [SPACE] Loaded {len(self.sats)} Strategic Assets (Fallback Mode).")
 
     async def get_satellite_states(self, current_time: float) -> List[TelemetryPayload]:
         await self._fetch_tles_if_needed()
